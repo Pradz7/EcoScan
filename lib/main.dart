@@ -1,24 +1,26 @@
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+
 import 'home_navigation.dart';
 import 'detection_data.dart';
+import 'auth_screen.dart';
 
-// note: This list stores available phone cameras.
 List<CameraDescription> cameras = [];
 
-// note: This is the main entry point of the app.
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  await Firebase.initializeApp();
+
   cameras = await availableCameras();
 
-  // note: This loads saved detection history before the app starts.
   await loadDetectionHistory();
 
   runApp(const SmartTrashApp());
 }
 
-// note: This class controls the whole application theme and first screen.
 class SmartTrashApp extends StatelessWidget {
   const SmartTrashApp({super.key});
 
@@ -31,7 +33,9 @@ class SmartTrashApp extends StatelessWidget {
         brightness: Brightness.dark,
         fontFamily: 'Arial',
       ),
-      home: const HomeNavigation(),
+      home: FirebaseAuth.instance.currentUser != null
+    ? const HomeNavigation()
+    : const AuthScreen(),
     );
   }
 }

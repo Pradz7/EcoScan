@@ -3,6 +3,9 @@ import 'package:fl_chart/fl_chart.dart';
 import 'camera_screen.dart';
 import 'about_screen.dart';
 import 'detection_data.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'auth_screen.dart';
+import 'firestore_service.dart';
 
 // note: This is the main navigation page with bottom navigation bar.
 class HomeNavigation extends StatefulWidget {
@@ -565,56 +568,52 @@ class _HistoryPageState extends State<HistoryPage> {
   bool get isSelectionMode => selectedIndexes.isNotEmpty;
 
   Future<void> _deleteSelected() async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          backgroundColor: const Color(0xFF161B26),
-
-          title: const Text("Delete Selected?"),
-
-          content: Text(
-            "Delete ${selectedIndexes.length} selected item(s)?",
-            style: const TextStyle(color: Colors.grey),
+  final confirm = await showDialog<bool>(
+    context: context,
+    builder: (context) {
+      return AlertDialog(
+        backgroundColor: const Color(0xFF161B26),
+        title: const Text("Delete Selected?"),
+        content: Text(
+          "Delete ${selectedIndexes.length} selected item(s)?",
+          style: const TextStyle(color: Colors.grey),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text("Cancel"),
           ),
-
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.pop(context, false);
-              },
-              child: const Text("Cancel"),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text(
+              "Delete",
+              style: TextStyle(color: Colors.redAccent),
             ),
+          ),
+        ],
+      );
+    },
+  );
 
-            TextButton(
-              onPressed: () {
-                Navigator.pop(context, true);
-              },
-              child: const Text(
-                "Delete",
-                style: TextStyle(color: Colors.redAccent),
-              ),
-            ),
-          ],
-        );
-      },
-    );
+  if (confirm == true) {
+    final itemsToDelete = selectedIndexes
+    .map((index) => filteredHistory[index])
+    .toList();
 
-    if (confirm == true) {
-      final sortedIndexes = selectedIndexes.toList()
-        ..sort((a, b) => b.compareTo(a));
+    detectionHistory.removeWhere((item) => itemsToDelete.contains(item));
 
-      for (final index in sortedIndexes) {
-        detectionHistory.removeAt(index);
-      }
+    selectedIndexes.clear();
 
-      selectedIndexes.clear();
+    await saveDetectionHistoryToStorage();
+    await FirestoreService.clearDetections();
 
-      await saveDetectionHistoryToStorage();
-
-      setState(() {});
+    for (final item in detectionHistory) {
+      await FirestoreService.saveDetection(item);
     }
+
+    setState(() {});
   }
+}
 
   Widget _historyItem(DetectionItem item, int index) {
     final isSelected = selectedIndexes.contains(index);
@@ -855,7 +854,7 @@ class _HistoryPageState extends State<HistoryPage> {
   }
 }
 
-// note: This is the profile page.
+// note: This is the profile page with Firebase user info and logout.
 class ProfilePage extends StatelessWidget {
   const ProfilePage({super.key});
 
@@ -863,36 +862,16 @@ class ProfilePage extends StatelessWidget {
     return detectionHistory.where((item) => item.category == category).length;
   }
 
-  Widget _glassCard({required Widget child}) {
+  Widget _infoCard(String title, String value, IconData icon, Color color) {
     return Container(
       width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 14),
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         color: const Color(0xFF161B26),
         borderRadius: BorderRadius.circular(22),
-        border: Border.all(
-          color: Colors.white.withOpacity(0.08),
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.18),
-            blurRadius: 24,
-            offset: const Offset(0, 8),
-          ),
-        ],
+        border: Border.all(color: Colors.white.withOpacity(0.08)),
       ),
-      child: child,
-    );
-  }
-
-  Widget _impactCard(
-    String title,
-    String value,
-    String subtitle,
-    IconData icon,
-    Color color,
-  ) {
-    return _glassCard(
       child: Row(
         children: [
           Container(
@@ -901,35 +880,21 @@ class ProfilePage extends StatelessWidget {
               color: color.withOpacity(0.14),
               borderRadius: BorderRadius.circular(16),
             ),
-            child: Icon(icon, color: color, size: 30),
+            child: Icon(icon, color: color, size: 28),
           ),
           const SizedBox(width: 16),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    color: Color(0xFF9CA3AF),
-                    fontSize: 13,
-                  ),
-                ),
+                Text(title, style: const TextStyle(color: Color(0xFF9CA3AF), fontSize: 13)),
                 const SizedBox(height: 6),
                 Text(
                   value,
                   style: const TextStyle(
-                    fontSize: 26,
-                    fontWeight: FontWeight.bold,
                     color: Color(0xFFE5E7EB),
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  subtitle,
-                  style: const TextStyle(
-                    color: Color(0xFF9CA3AF),
-                    fontSize: 12,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
               ],
@@ -940,73 +905,70 @@ class ProfilePage extends StatelessWidget {
     );
   }
 
-  Widget _achievementItem(
-    String title,
-    String description,
-    IconData icon,
-    Color color,
-    String time,
-  ) {
+  Widget _categoryStat(String category, int count, Color color) {
     return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: const BoxDecoration(
-        border: Border(
-          bottom: BorderSide(
-            color: Color(0xFF263241),
-            width: 0.6,
-          ),
-        ),
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFF161B26),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.white.withOpacity(0.08)),
       ),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          CircleAvatar(
-            backgroundColor: const Color(0xFF222A36),
-            child: Icon(icon, color: color),
-          ),
-          const SizedBox(width: 14),
+          Container(width: 12, height: 12, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+          const SizedBox(width: 12),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontSize: 17,
-                    fontWeight: FontWeight.w600,
-                    color: Color(0xFFE5E7EB),
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  description,
-                  style: const TextStyle(
-                    color: Color(0xFF9CA3AF),
-                    height: 1.4,
-                  ),
-                ),
-              ],
+            child: Text(
+              category,
+              style: const TextStyle(color: Color(0xFFE5E7EB), fontWeight: FontWeight.bold),
             ),
           ),
-          Text(
-            time,
-            style: const TextStyle(
-              color: Color(0xFF6B7280),
-              fontSize: 12,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
+          Text("$count items", style: const TextStyle(color: Color(0xFF9CA3AF))),
         ],
+      ),
+    );
+  }
+
+  Widget _logoutButton(BuildContext context) {
+    return SizedBox(
+      width: double.infinity,
+      height: 56,
+      child: ElevatedButton.icon(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Colors.redAccent,
+          foregroundColor: Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        ),
+        onPressed: () async {
+          await FirebaseAuth.instance.signOut();
+
+          if (!context.mounted) return;
+
+          Navigator.pushAndRemoveUntil(
+            context,
+            MaterialPageRoute(builder: (context) => const AuthScreen()),
+            (route) => false,
+          );
+        },
+        icon: const Icon(Icons.logout),
+        label: const Text("Logout", style: TextStyle(fontWeight: FontWeight.bold)),
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
+    final user = FirebaseAuth.instance.currentUser;
+    final email = user?.email ?? "No email";
+
     final totalScans = detectionHistory.length;
     final plasticCount = _countCategory("PLASTIC");
     final paperCount = _countCategory("PAPER");
-    final estimatedCo2Saved = (totalScans * 0.12).toStringAsFixed(1);
+    final metalCount = _countCategory("METAL");
+    final glassCount = _countCategory("GLASS");
+    final cardboardCount = _countCategory("CARDBOARD");
+    final biodegradableCount = _countCategory("BIODEGRADABLE");
 
     return Scaffold(
       backgroundColor: const Color(0xFF0B101B),
@@ -1015,215 +977,50 @@ class ProfilePage extends StatelessWidget {
         elevation: 0,
         centerTitle: true,
         title: const Text(
-          "EcoScan",
-          style: TextStyle(
-            color: Color(0xFF6BFB9A),
-            fontWeight: FontWeight.bold,
-            fontSize: 24,
-          ),
+          "Profile",
+          style: TextStyle(color: Color(0xFF6BFB9A), fontWeight: FontWeight.bold, fontSize: 24),
         ),
-        actions: const [
-          Padding(
-            padding: EdgeInsets.only(right: 14),
-            child: Icon(
-              Icons.settings,
-              color: Color(0xFF6BFB9A),
-            ),
-          ),
-        ],
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
         child: Column(
           children: [
-            const SizedBox(height: 10),
-
-            Stack(
-              children: [
-                const CircleAvatar(
-                  radius: 52,
-                  backgroundColor: Color(0xFF6BFB9A),
-                  child: Icon(
-                    Icons.person,
-                    size: 62,
-                    color: Color(0xFF0B101B),
-                  ),
-                ),
-                Positioned(
-                  bottom: 0,
-                  right: 0,
-                  child: Container(
-                    padding: const EdgeInsets.all(5),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF6BFB9A),
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: const Color(0xFF0B101B),
-                        width: 2,
-                      ),
-                    ),
-                    child: const Icon(
-                      Icons.verified,
-                      size: 17,
-                      color: Color(0xFF0B101B),
-                    ),
-                  ),
-                ),
-              ],
+            const CircleAvatar(
+              radius: 52,
+              backgroundColor: Color(0xFF6BFB9A),
+              child: Icon(Icons.person, size: 62, color: Color(0xFF0B101B)),
             ),
-
             const SizedBox(height: 16),
-
             const Text(
-              "Smart Trash User",
-              style: TextStyle(
-                fontSize: 30,
-                fontWeight: FontWeight.bold,
-                color: Color(0xFFE5E7EB),
-              ),
+              "EcoScan User",
+              style: TextStyle(fontSize: 30, fontWeight: FontWeight.bold, color: Color(0xFFE5E7EB)),
             ),
+            const SizedBox(height: 8),
+            Text(email, style: const TextStyle(color: Color(0xFF9CA3AF))),
+            const SizedBox(height: 30),
 
-            const SizedBox(height: 10),
+            _infoCard("Total Scans", "$totalScans detections", Icons.center_focus_strong, const Color(0xFF6BFB9A)),
 
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-              decoration: BoxDecoration(
-                color: const Color(0xFF44E2CD).withOpacity(0.15),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(
-                  color: const Color(0xFF44E2CD).withOpacity(0.35),
-                ),
-              ),
-              child: const Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.eco, color: Color(0xFF44E2CD), size: 16),
-                  SizedBox(width: 6),
-                  Text(
-                    "PRO MEMBER",
-                    style: TextStyle(
-                      color: Color(0xFF44E2CD),
-                      fontWeight: FontWeight.bold,
-                      fontSize: 12,
-                      letterSpacing: 0.8,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 32),
+            const SizedBox(height: 22),
 
             const Align(
               alignment: Alignment.centerLeft,
-              child: Row(
-                children: [
-                  Icon(Icons.public, color: Color(0xFF6BFB9A)),
-                  SizedBox(width: 8),
-                  Text(
-                    "Environmental Impact",
-                    style: TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFFBCCABB),
-                    ),
-                  ),
-                ],
+              child: Text(
+                "Detected Categories",
+                style: TextStyle(color: Color(0xFFE5E7EB), fontSize: 24, fontWeight: FontWeight.bold),
               ),
             ),
-
             const SizedBox(height: 16),
 
-            _impactCard(
-              "CO2 Saved",
-              "$estimatedCo2Saved kg",
-              "+${(totalScans * 0.03).toStringAsFixed(1)}kg this week",
-              Icons.co2,
-              const Color(0xFF6BFB9A),
-            ),
+            _categoryStat("BIODEGRADABLE", biodegradableCount, const Color(0xFF6BFB9A)),
+            _categoryStat("CARDBOARD", cardboardCount, Colors.brown),
+            _categoryStat("GLASS", glassCount, Colors.lightBlue),
+            _categoryStat("METAL", metalCount, Colors.blueGrey),
+            _categoryStat("PAPER", paperCount, Colors.orange),
+            _categoryStat("PLASTIC", plasticCount, const Color(0xFF44E2CD)),
 
-            const SizedBox(height: 14),
-
-            Row(
-              children: [
-                Expanded(
-                  child: _impactCard(
-                    "Plastic Diverted",
-                    "$plasticCount",
-                    "items",
-                    Icons.recycling,
-                    const Color(0xFF44E2CD),
-                  ),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: _impactCard(
-                    "Paper Saved",
-                    "$paperCount",
-                    "items",
-                    Icons.forest,
-                    Colors.orange,
-                  ),
-                ),
-              ],
-            ),
-
-            const SizedBox(height: 32),
-
-            const Align(
-              alignment: Alignment.centerLeft,
-              child: Row(
-                children: [
-                  Icon(Icons.workspace_premium, color: Color(0xFF44E2CD)),
-                  SizedBox(width: 8),
-                  Text(
-                    "Recent Achievements",
-                    style: TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFFBCCABB),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 16),
-
-            Container(
-              decoration: BoxDecoration(
-                color: const Color(0xFF161B26),
-                borderRadius: BorderRadius.circular(22),
-                border: Border.all(
-                  color: Colors.white.withOpacity(0.08),
-                ),
-              ),
-              child: Column(
-                children: [
-                  _achievementItem(
-                    "AI Scanner",
-                    "You have scanned $totalScans trash items using the phone camera.",
-                    Icons.center_focus_strong,
-                    const Color(0xFFFFB47F),
-                    "Today",
-                  ),
-                  _achievementItem(
-                    "Plastic Watcher",
-                    "You detected $plasticCount plastic waste items.",
-                    Icons.water_drop,
-                    const Color(0xFF6BFB9A),
-                    "2d ago",
-                  ),
-                  _achievementItem(
-                    "Forest Guardian",
-                    "You detected $paperCount paper waste items.",
-                    Icons.forest,
-                    const Color(0xFF44E2CD),
-                    "1w ago",
-                  ),
-                ],
-              ),
-            ),
+            const SizedBox(height: 24),
+            _logoutButton(context),
           ],
         ),
       ),

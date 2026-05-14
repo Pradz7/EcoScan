@@ -1,11 +1,12 @@
+import 'dart:io';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'main.dart';
 import 'result_screen.dart';
 import 'detection_data.dart';
 import 'ai_detection_service.dart';
+import 'firestore_service.dart';
 
-// note: This screen uses the real phone camera.
 class CameraScreen extends StatefulWidget {
   const CameraScreen({super.key});
 
@@ -24,8 +25,8 @@ class _CameraScreenState extends State<CameraScreen> {
   String detectedObject = "Ready";
   String detectedCategory = "";
   String detectedConfidence = "";
-  IconData detectedIcon = Icons.local_drink;
-  Color detectedColor = Colors.deepPurple;
+  IconData detectedIcon = Icons.center_focus_strong;
+  Color detectedColor = const Color(0xFF6BFB9A);
 
   @override
   void initState() {
@@ -68,14 +69,24 @@ class _CameraScreenState extends State<CameraScreen> {
     );
 
     await saveDetectionHistoryToStorage();
+    await FirestoreService.saveDetection(detectionHistory.first);
   }
 
   void startDetection() async {
+    if (cameraController == null || !cameraController!.value.isInitialized) {
+      return;
+    }
+
     setState(() {
       isScanning = true;
+      detectedObject = "Scanning";
+      detectedConfidence = "";
     });
 
-    final result = await aiDetectionService.detectTrash();
+    await Future.delayed(const Duration(milliseconds: 300));
+
+    final image = await cameraController!.takePicture();
+    final result = await aiDetectionService.detectTrash(File(image.path));
 
     if (!mounted) return;
 
@@ -116,29 +127,48 @@ class _CameraScreenState extends State<CameraScreen> {
   }
 
   Widget _scannerCorner(Alignment alignment) {
+    final bool top =
+        alignment == Alignment.topLeft || alignment == Alignment.topRight;
+    final bool bottom =
+        alignment == Alignment.bottomLeft || alignment == Alignment.bottomRight;
+    final bool left =
+        alignment == Alignment.topLeft || alignment == Alignment.bottomLeft;
+    final bool right =
+        alignment == Alignment.topRight || alignment == Alignment.bottomRight;
+
     return Align(
       alignment: alignment,
       child: Container(
-        width: 28,
-        height: 28,
-        margin: const EdgeInsets.all(6),
+        width: 34,
+        height: 34,
+        margin: const EdgeInsets.all(3),
         decoration: BoxDecoration(
+          borderRadius: BorderRadius.only(
+            topLeft: alignment == Alignment.topLeft
+                ? const Radius.circular(14)
+                : Radius.zero,
+            topRight: alignment == Alignment.topRight
+                ? const Radius.circular(14)
+                : Radius.zero,
+            bottomLeft: alignment == Alignment.bottomLeft
+                ? const Radius.circular(14)
+                : Radius.zero,
+            bottomRight: alignment == Alignment.bottomRight
+                ? const Radius.circular(14)
+                : Radius.zero,
+          ),
           border: Border(
-            top: alignment == Alignment.topLeft ||
-                    alignment == Alignment.topRight
-                ? BorderSide(color: detectedColor, width: 4)
+            top: top
+                ? BorderSide(color: detectedColor, width: 6)
                 : BorderSide.none,
-            bottom: alignment == Alignment.bottomLeft ||
-                    alignment == Alignment.bottomRight
-                ? BorderSide(color: detectedColor, width: 4)
+            bottom: bottom
+                ? BorderSide(color: detectedColor, width: 6)
                 : BorderSide.none,
-            left: alignment == Alignment.topLeft ||
-                    alignment == Alignment.bottomLeft
-                ? BorderSide(color: detectedColor, width: 4)
+            left: left
+                ? BorderSide(color: detectedColor, width: 6)
                 : BorderSide.none,
-            right: alignment == Alignment.topRight ||
-                    alignment == Alignment.bottomRight
-                ? BorderSide(color: detectedColor, width: 4)
+            right: right
+                ? BorderSide(color: detectedColor, width: 6)
                 : BorderSide.none,
           ),
         ),
@@ -148,6 +178,8 @@ class _CameraScreenState extends State<CameraScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final bool showLabel = isScanning || detectedCategory.isNotEmpty;
+
     return Scaffold(
       backgroundColor: const Color(0xFF101415),
       body: Stack(
@@ -173,7 +205,7 @@ class _CameraScreenState extends State<CameraScreen> {
                 colors: [
                   Colors.black.withOpacity(0.55),
                   Colors.transparent,
-                  Colors.black.withOpacity(0.75),
+                  Colors.black.withOpacity(0.85),
                 ],
               ),
             ),
@@ -181,56 +213,47 @@ class _CameraScreenState extends State<CameraScreen> {
 
           SafeArea(
             child: Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 20,
-                vertical: 10,
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const SizedBox(width: 52),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 10,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withOpacity(0.35),
-                      borderRadius: BorderRadius.circular(30),
-                      border: Border.all(
-                        color: Colors.white.withOpacity(0.1),
-                      ),
-                    ),
-                    child: const Text(
-                      "Align object in frame",
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w500,
-                      ),
+              padding: const EdgeInsets.only(top: 12),
+              child: Center(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 18,
+                    vertical: 10,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.35),
+                    borderRadius: BorderRadius.circular(30),
+                    border: Border.all(color: Colors.white.withOpacity(0.1)),
+                  ),
+                  child: const Text(
+                    "Align object in frame",
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
-                  const SizedBox(width: 52),
-                ],
+                ),
               ),
             ),
           ),
 
-          Center(
+          Align(
+            alignment: const Alignment(0, -0.18),
             child: AnimatedContainer(
-              duration: const Duration(milliseconds: 400),
-              width: 260,
-              height: 360,
+              duration: const Duration(milliseconds: 300),
+              width: 270,
+              height: 340,
               decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(24),
+                borderRadius: BorderRadius.circular(20),
                 border: Border.all(
                   color: detectedColor,
-                  width: 2.5,
+                  width: 3.5,
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color: detectedColor.withOpacity(0.35),
-                    blurRadius: 30,
-                    spreadRadius: 2,
+                    color: detectedColor.withOpacity(0.45),
+                    blurRadius: 22,
+                    spreadRadius: 1,
                   ),
                 ],
               ),
@@ -241,59 +264,66 @@ class _CameraScreenState extends State<CameraScreen> {
                   _scannerCorner(Alignment.bottomLeft),
                   _scannerCorner(Alignment.bottomRight),
 
-                  Positioned(
-                    top: 18,
-                    left: 0,
-                    right: 0,
-                    child: Center(
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 10,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.black.withOpacity(0.55),
-                          borderRadius: BorderRadius.circular(40),
-                          border: Border.all(
-                            color: detectedColor.withOpacity(0.4),
+                  if (showLabel)
+                    Positioned(
+                      top: 24,
+                      left: 18,
+                      right: 18,
+                      child: Center(
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 18,
+                            vertical: 10,
                           ),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Container(
-                              width: 10,
-                              height: 10,
-                              decoration: BoxDecoration(
-                                color: detectedColor,
-                                shape: BoxShape.circle,
-                              ),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withOpacity(0.55),
+                            borderRadius: BorderRadius.circular(40),
+                            border: Border.all(
+                              color: detectedColor.withOpacity(0.45),
                             ),
-                            const SizedBox(width: 10),
-                            Text(
-                              isScanning ? "Scanning..." : detectedObject,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w600,
-                              ),
+                          ),
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Container(
+                                  width: 10,
+                                  height: 10,
+                                  decoration: BoxDecoration(
+                                    color: detectedColor,
+                                    shape: BoxShape.circle,
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Text(
+                                  isScanning ? "Scanning..." : detectedObject,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                if (!isScanning &&
+                                    detectedConfidence.isNotEmpty) ...[
+                                  const SizedBox(width: 12),
+                                  Text(
+                                    detectedConfidence,
+                                    style: TextStyle(
+                                      color: detectedColor,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ],
+                              ],
                             ),
-                            const SizedBox(width: 10),
-                            Text(
-                              isScanning ? "AI" : detectedConfidence,
-                              style: TextStyle(
-                                color: detectedColor,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ],
+                          ),
                         ),
                       ),
                     ),
-                  ),
 
                   if (isScanning)
                     TweenAnimationBuilder<double>(
-                      tween: Tween<double>(begin: 0, end: 320),
+                      tween: Tween<double>(begin: 0, end: 300),
                       duration: const Duration(seconds: 2),
                       curve: Curves.linear,
                       builder: (context, value, child) {
@@ -321,80 +351,62 @@ class _CameraScreenState extends State<CameraScreen> {
             ),
           ),
 
-          if (isScanning)
-            Positioned(
-              bottom: 220,
-              left: 0,
-              right: 0,
-              child: Column(
-                children: [
-                  const CircularProgressIndicator(
-                    color: Color(0xFF6BFB9A),
-                  ),
-                  const SizedBox(height: 18),
-                  Text(
-                    "AI analyzing object...",
-                    style: TextStyle(
-                      color: detectedColor,
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
           Positioned(
-            bottom: 40,
+            bottom: 32,
             left: 0,
             right: 0,
-            child: Column(
-              children: [
-                GestureDetector(
-                  onTap: isScanning || !isCameraReady ? null : startDetection,
-                  child: Container(
-                    width: 95,
-                    height: 95,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: detectedColor,
-                        width: 4,
-                      ),
-                    ),
-                    child: Center(
-                      child: Container(
-                        width: 72,
-                        height: 72,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: detectedColor.withOpacity(0.25),
+            child: SafeArea(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  GestureDetector(
+                    onTap: isScanning || !isCameraReady ? null : startDetection,
+                    child: Container(
+                      width: 92,
+                      height: 92,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: detectedColor,
+                          width: 5,
                         ),
-                        child: Center(
-                          child: Container(
-                            width: 54,
-                            height: 54,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: detectedColor,
+                      ),
+                      child: Center(
+                        child: Container(
+                          width: 70,
+                          height: 70,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: detectedColor.withOpacity(0.25),
+                          ),
+                          child: Center(
+                            child: Container(
+                              width: 54,
+                              height: 54,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: detectedColor,
+                              ),
                             ),
                           ),
                         ),
                       ),
                     ),
                   ),
-                ),
 
-                const SizedBox(height: 20),
+                  const SizedBox(height: 14),
 
-                Text(
-                  isScanning ? "Scanning..." : "Tap to start AI detection",
-                  style: const TextStyle(
-                    color: Colors.white70,
-                    fontWeight: FontWeight.w500,
+                  Text(
+                    isScanning
+                        ? "AI analyzing object..."
+                        : "Tap to start AI detection",
+                    style: const TextStyle(
+                      color: Colors.white70,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ],
