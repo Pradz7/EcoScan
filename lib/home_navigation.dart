@@ -7,6 +7,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'auth_screen.dart';
 import 'firestore_service.dart';
 
+
 // note: This is the main navigation page with bottom navigation bar.
 class HomeNavigation extends StatefulWidget {
   const HomeNavigation({super.key});
@@ -372,16 +373,6 @@ class DashboardPage extends StatelessWidget {
             fontSize: 24,
           ),
         ),
-
-        actions: const [
-          Padding(
-            padding: EdgeInsets.only(right: 14),
-            child: Icon(
-              Icons.settings,
-              color: Color(0xFF9CA3AF),
-            ),
-          ),
-        ],
       ),
 
       body: SingleChildScrollView(
@@ -390,9 +381,9 @@ class DashboardPage extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              "Hello, User",
-              style: TextStyle(
+            Text(
+              "Hello, ${FirebaseAuth.instance.currentUser?.displayName?.isNotEmpty == true ? FirebaseAuth.instance.currentUser!.displayName! : FirebaseAuth.instance.currentUser?.email?.split('@')[0] ?? 'User'}",
+              style: const TextStyle(
                 color: Color(0xFFE5E7EB),
                 fontSize: 34,
                 fontWeight: FontWeight.bold,
@@ -400,16 +391,6 @@ class DashboardPage extends StatelessWidget {
             ),
 
             const SizedBox(height: 10),
-
-            Text(
-              "You've successfully diverted ${(total * 0.3).toStringAsFixed(1)}kg of waste this month.",
-              style: const TextStyle(
-                color: Color(0xFF9CA3AF),
-                fontSize: 16,
-                height: 1.5,
-              ),
-            ),
-
             const SizedBox(height: 28),
 
             GestureDetector(
@@ -777,8 +758,6 @@ class _HistoryPageState extends State<HistoryPage> {
                 color: Colors.redAccent,
               ),
             ),
-
-          if (isSelectionMode)
             IconButton(
               onPressed: () {
                 setState(() {
@@ -854,12 +833,94 @@ class _HistoryPageState extends State<HistoryPage> {
   }
 }
 
-// note: This is the profile page with Firebase user info and logout.
-class ProfilePage extends StatelessWidget {
+// note: This is the profile page.
+class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
 
+  @override
+  State<ProfilePage> createState() => _ProfilePageState();
+}
+
+class _ProfilePageState extends State<ProfilePage> {
   int _countCategory(String category) {
     return detectionHistory.where((item) => item.category == category).length;
+  }
+
+  String _getUsername() {
+    final user = FirebaseAuth.instance.currentUser;
+
+    if (user?.displayName != null && user!.displayName!.trim().isNotEmpty) {
+      return user.displayName!;
+    }
+
+    if (user?.email != null) {
+      return user!.email!.split('@')[0];
+    }
+
+    return "EcoScan User";
+  }
+
+  Future<void> _editUsername() async {
+    final controller = TextEditingController(
+      text: _getUsername(),
+    );
+
+    await showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          backgroundColor: const Color(0xFF161B26),
+          title: const Text(
+            "Edit Username",
+            style: TextStyle(color: Colors.white),
+          ),
+          content: TextField(
+            controller: controller,
+            style: const TextStyle(color: Colors.white),
+            decoration: InputDecoration(
+              hintText: "Enter username",
+              hintStyle: const TextStyle(color: Colors.grey),
+              filled: true,
+              fillColor: const Color(0xFF0B101B),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: BorderSide.none,
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(dialogContext);
+              },
+              child: const Text("Cancel"),
+            ),
+            TextButton(
+              onPressed: () async {
+                final newUsername = controller.text.trim();
+
+                if (newUsername.isEmpty) return;
+
+                await FirebaseAuth.instance.currentUser?.updateDisplayName(
+                  newUsername,
+                );
+
+                await FirebaseAuth.instance.currentUser?.reload();
+
+                if (!mounted) return;
+
+                setState(() {});
+
+                if (dialogContext.mounted) {
+                  Navigator.pop(dialogContext);
+                }
+              },
+              child: const Text("Save"),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   Widget _infoCard(String title, String value, IconData icon, Color color) {
@@ -887,7 +948,13 @@ class ProfilePage extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title, style: const TextStyle(color: Color(0xFF9CA3AF), fontSize: 13)),
+                Text(
+                  title,
+                  style: const TextStyle(
+                    color: Color(0xFF9CA3AF),
+                    fontSize: 13,
+                  ),
+                ),
                 const SizedBox(height: 6),
                 Text(
                   value,
@@ -916,15 +983,28 @@ class ProfilePage extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Container(width: 12, height: 12, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+          Container(
+            width: 12,
+            height: 12,
+            decoration: BoxDecoration(
+              color: color,
+              shape: BoxShape.circle,
+            ),
+          ),
           const SizedBox(width: 12),
           Expanded(
             child: Text(
               category,
-              style: const TextStyle(color: Color(0xFFE5E7EB), fontWeight: FontWeight.bold),
+              style: const TextStyle(
+                color: Color(0xFFE5E7EB),
+                fontWeight: FontWeight.bold,
+              ),
             ),
           ),
-          Text("$count items", style: const TextStyle(color: Color(0xFF9CA3AF))),
+          Text(
+            "$count items",
+            style: const TextStyle(color: Color(0xFF9CA3AF)),
+          ),
         ],
       ),
     );
@@ -938,7 +1018,9 @@ class ProfilePage extends StatelessWidget {
         style: ElevatedButton.styleFrom(
           backgroundColor: Colors.redAccent,
           foregroundColor: Colors.white,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+          ),
         ),
         onPressed: () async {
           await FirebaseAuth.instance.signOut();
@@ -947,12 +1029,17 @@ class ProfilePage extends StatelessWidget {
 
           Navigator.pushAndRemoveUntil(
             context,
-            MaterialPageRoute(builder: (context) => const AuthScreen()),
+            MaterialPageRoute(
+              builder: (context) => const AuthScreen(),
+            ),
             (route) => false,
           );
         },
         icon: const Icon(Icons.logout),
-        label: const Text("Logout", style: TextStyle(fontWeight: FontWeight.bold)),
+        label: const Text(
+          "Logout",
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
       ),
     );
   }
@@ -978,7 +1065,11 @@ class ProfilePage extends StatelessWidget {
         centerTitle: true,
         title: const Text(
           "Profile",
-          style: TextStyle(color: Color(0xFF6BFB9A), fontWeight: FontWeight.bold, fontSize: 24),
+          style: TextStyle(
+            color: Color(0xFF6BFB9A),
+            fontWeight: FontWeight.bold,
+            fontSize: 24,
+          ),
         ),
       ),
       body: SingleChildScrollView(
@@ -988,18 +1079,57 @@ class ProfilePage extends StatelessWidget {
             const CircleAvatar(
               radius: 52,
               backgroundColor: Color(0xFF6BFB9A),
-              child: Icon(Icons.person, size: 62, color: Color(0xFF0B101B)),
+              child: Icon(
+                Icons.person,
+                size: 62,
+                color: Color(0xFF0B101B),
+              ),
             ),
+
             const SizedBox(height: 16),
-            const Text(
-              "EcoScan User",
-              style: TextStyle(fontSize: 30, fontWeight: FontWeight.bold, color: Color(0xFFE5E7EB)),
+
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Flexible(
+                  child: Text(
+                    _getUsername(),
+                    textAlign: TextAlign.center,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 30,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFFE5E7EB),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                GestureDetector(
+                  onTap: _editUsername,
+                  child: const Icon(
+                    Icons.edit,
+                    color: Color(0xFF6BFB9A),
+                    size: 22,
+                  ),
+                ),
+              ],
             ),
+
             const SizedBox(height: 8),
-            Text(email, style: const TextStyle(color: Color(0xFF9CA3AF))),
+
+            Text(
+              email,
+              style: const TextStyle(color: Color(0xFF9CA3AF)),
+            ),
+
             const SizedBox(height: 30),
 
-            _infoCard("Total Scans", "$totalScans detections", Icons.center_focus_strong, const Color(0xFF6BFB9A)),
+            _infoCard(
+              "Total Scans",
+              "$totalScans detections",
+              Icons.center_focus_strong,
+              const Color(0xFF6BFB9A),
+            ),
 
             const SizedBox(height: 22),
 
@@ -1007,19 +1137,49 @@ class ProfilePage extends StatelessWidget {
               alignment: Alignment.centerLeft,
               child: Text(
                 "Detected Categories",
-                style: TextStyle(color: Color(0xFFE5E7EB), fontSize: 24, fontWeight: FontWeight.bold),
+                style: TextStyle(
+                  color: Color(0xFFE5E7EB),
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
             ),
+
             const SizedBox(height: 16),
 
-            _categoryStat("BIODEGRADABLE", biodegradableCount, const Color(0xFF6BFB9A)),
-            _categoryStat("CARDBOARD", cardboardCount, Colors.brown),
-            _categoryStat("GLASS", glassCount, Colors.lightBlue),
-            _categoryStat("METAL", metalCount, Colors.blueGrey),
-            _categoryStat("PAPER", paperCount, Colors.orange),
-            _categoryStat("PLASTIC", plasticCount, const Color(0xFF44E2CD)),
+            _categoryStat(
+              "BIODEGRADABLE",
+              biodegradableCount,
+              const Color(0xFF6BFB9A),
+            ),
+            _categoryStat(
+              "CARDBOARD",
+              cardboardCount,
+              Colors.brown,
+            ),
+            _categoryStat(
+              "GLASS",
+              glassCount,
+              Colors.lightBlue,
+            ),
+            _categoryStat(
+              "METAL",
+              metalCount,
+              Colors.blueGrey,
+            ),
+            _categoryStat(
+              "PAPER",
+              paperCount,
+              Colors.orange,
+            ),
+            _categoryStat(
+              "PLASTIC",
+              plasticCount,
+              const Color(0xFF44E2CD),
+            ),
 
             const SizedBox(height: 24),
+
             _logoutButton(context),
           ],
         ),

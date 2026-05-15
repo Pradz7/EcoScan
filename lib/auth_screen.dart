@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'home_navigation.dart';
 import 'firestore_service.dart';
 
-// note: This screen handles login and register using Firebase Auth.
 class AuthScreen extends StatefulWidget {
   const AuthScreen({super.key});
 
@@ -12,6 +11,7 @@ class AuthScreen extends StatefulWidget {
 }
 
 class _AuthScreenState extends State<AuthScreen> {
+  final usernameController = TextEditingController();
   final emailController = TextEditingController();
   final passwordController = TextEditingController();
 
@@ -30,14 +30,19 @@ class _AuthScreenState extends State<AuthScreen> {
           password: passwordController.text.trim(),
         );
       } else {
-        await FirebaseAuth.instance.createUserWithEmailAndPassword(
+        final userCredential =
+            await FirebaseAuth.instance.createUserWithEmailAndPassword(
           email: emailController.text.trim(),
           password: passwordController.text.trim(),
+        );
+
+        await userCredential.user?.updateDisplayName(
+          usernameController.text.trim(),
         );
       }
 
       await FirestoreService.loadDetections();
-      
+
       if (!mounted) return;
 
       Navigator.pushReplacement(
@@ -46,7 +51,6 @@ class _AuthScreenState extends State<AuthScreen> {
           builder: (context) => const HomeNavigation(),
         ),
       );
-      
     } on FirebaseAuthException catch (e) {
       String message = "Authentication failed. Please try again.";
 
@@ -74,15 +78,6 @@ class _AuthScreenState extends State<AuthScreen> {
           backgroundColor: Colors.redAccent,
         ),
       );
-    } catch (e) {
-      if (!mounted) return;
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Something went wrong. Please try again."),
-          backgroundColor: Colors.redAccent,
-        ),
-      );
     }
 
     if (!mounted) return;
@@ -94,6 +89,7 @@ class _AuthScreenState extends State<AuthScreen> {
 
   @override
   void dispose() {
+    usernameController.dispose();
     emailController.dispose();
     passwordController.dispose();
     super.dispose();
@@ -111,21 +107,13 @@ class _AuthScreenState extends State<AuthScreen> {
             decoration: BoxDecoration(
               color: const Color(0xFF161B26),
               borderRadius: BorderRadius.circular(28),
-              border: Border.all(
-                color: Colors.white.withOpacity(0.08),
-              ),
+              border: Border.all(color: Colors.white.withOpacity(0.08)),
             ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(
-                  Icons.recycling,
-                  color: Color(0xFF6BFB9A),
-                  size: 70,
-                ),
-
+                const Icon(Icons.recycling, color: Color(0xFF6BFB9A), size: 70),
                 const SizedBox(height: 18),
-
                 Text(
                   isLogin ? "Welcome Back" : "Create Account",
                   style: const TextStyle(
@@ -134,17 +122,29 @@ class _AuthScreenState extends State<AuthScreen> {
                     fontWeight: FontWeight.bold,
                   ),
                 ),
-
-                const SizedBox(height: 8),
-
-                const Text(
-                  "Smart Trash Detection",
-                  style: TextStyle(
-                    color: Color(0xFF9CA3AF),
-                  ),
-                ),
-
                 const SizedBox(height: 30),
+
+                if (!isLogin) ...[
+                  TextField(
+                    controller: usernameController,
+                    style: const TextStyle(color: Colors.white),
+                    decoration: InputDecoration(
+                      labelText: "Username",
+                      labelStyle: const TextStyle(color: Color(0xFF9CA3AF)),
+                      prefixIcon: const Icon(
+                        Icons.person_outline,
+                        color: Color(0xFF6BFB9A),
+                      ),
+                      filled: true,
+                      fillColor: const Color(0xFF0B101B),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(18),
+                        borderSide: BorderSide.none,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                ],
 
                 TextField(
                   controller: emailController,
@@ -215,8 +215,6 @@ class _AuthScreenState extends State<AuthScreen> {
                           ),
                   ),
                 ),
-
-                const SizedBox(height: 16),
 
                 TextButton(
                   onPressed: () {
